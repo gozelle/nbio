@@ -12,15 +12,15 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/lesismal/nbio/mempool"
+	
+	"github.com/gozelle/nbio/mempool"
 )
 
 const (
 	transferEncodingHeader = "Transfer-Encoding"
 	trailerHeader          = "Trailer"
 	contentLengthHeader    = "Content-Length"
-
+	
 	// MaxUint .
 	MaxUint = ^uint(0)
 	// MaxInt .
@@ -30,28 +30,28 @@ const (
 // Parser .
 type Parser struct {
 	mux sync.Mutex
-
+	
 	cache []byte
-
+	
 	state    int8
 	isClient bool
-
+	
 	readLimit int
-
+	
 	errClose error
-
+	
 	onClose func(p *Parser, err error)
-
+	
 	Processor Processor
-
+	
 	Reader ReadCloser
-
+	
 	Engine *Engine
-
+	
 	Conn net.Conn
-
+	
 	Execute func(f func()) bool
-
+	
 	// http fields
 	proto         string
 	statusCode    int
@@ -83,15 +83,15 @@ func (p *Parser) OnClose(h func(p *Parser, err error)) {
 func (p *Parser) Close(err error) {
 	p.mux.Lock()
 	defer p.mux.Unlock()
-
+	
 	if p.state == stateClose {
 		return
 	}
-
+	
 	p.state = stateClose
-
+	
 	p.errClose = err
-
+	
 	if p.Reader != nil {
 		p.Reader.Close(p, p.errClose)
 	}
@@ -124,15 +124,15 @@ func parseAndValidateChunkSize(originalStr string) (int, error) {
 func (p *Parser) Read(data []byte) error {
 	p.mux.Lock()
 	defer p.mux.Unlock()
-
+	
 	if p.state == stateClose {
 		return net.ErrClosed
 	}
-
+	
 	if len(data) == 0 {
 		return nil
 	}
-
+	
 	var c byte
 	var start = 0
 	var offset = len(p.cache)
@@ -157,7 +157,7 @@ UPGRADER:
 		}
 		return err
 	}
-
+	
 	for i := offset; i < len(data); i++ {
 		if p.Reader != nil {
 			goto UPGRADER
@@ -336,7 +336,7 @@ UPGRADER:
 				if err != nil {
 					return err
 				}
-
+				
 				p.Processor.OnContentLength(p.contentLength)
 				err = p.parseTrailer()
 				if err != nil {
@@ -389,11 +389,11 @@ UPGRADER:
 					p.header.Add(p.headerKey, p.headerValue)
 				default:
 				}
-
+				
 				p.Processor.OnHeader(p.headerKey, p.headerValue)
 				p.headerKey = ""
 				p.headerValue = ""
-
+				
 				start = i + 1
 				p.nextState(stateHeaderValueLF)
 			case '\n':
@@ -419,11 +419,11 @@ UPGRADER:
 					p.header.Add(p.headerKey, p.headerValue)
 				default:
 				}
-
+				
 				p.Processor.OnHeader(p.headerKey, p.headerValue)
 				p.headerKey = ""
 				p.headerValue = ""
-
+				
 				start = i + 1
 				p.nextState(stateHeaderValueLF)
 			case '\n':
@@ -502,7 +502,7 @@ UPGRADER:
 					p.nextState(stateBodyChunkData)
 				} else {
 					// chunk size is 0
-
+					
 					if len(p.trailer) > 0 {
 						// read trailer headers
 						p.nextState(stateBodyTrailerHeaderKeyBefore)
@@ -550,7 +550,7 @@ UPGRADER:
 				p.nextState(stateBodyTrailerHeaderKey)
 				continue
 			}
-
+			
 			// all trailer header readed
 			if c == '\r' {
 				if len(p.trailer) > 0 {
@@ -588,7 +588,7 @@ UPGRADER:
 				p.Processor.OnTrailerHeader(p.headerKey, p.headerValue)
 				p.headerKey = ""
 				p.headerValue = ""
-
+				
 				start = i + 1
 				p.nextState(stateBodyTrailerHeaderValueLF)
 			default:
@@ -612,7 +612,7 @@ UPGRADER:
 					return fmt.Errorf("invalid trailer '%v'", p.headerKey)
 				}
 				delete(p.trailer, p.headerKey)
-
+				
 				p.Processor.OnTrailerHeader(p.headerKey, p.headerValue)
 				start = i + 1
 				p.headerKey = ""
@@ -656,7 +656,7 @@ Exit:
 		mempool.Free(p.cache)
 		p.cache = nil
 	}
-
+	
 	return nil
 }
 
@@ -666,7 +666,7 @@ func (p *Parser) parseTransferEncoding() error {
 		return nil
 	}
 	delete(p.header, transferEncodingHeader)
-
+	
 	if len(raw) != 1 {
 		return fmt.Errorf("too many transfer encodings: %q", raw)
 	}
@@ -675,7 +675,7 @@ func (p *Parser) parseTransferEncoding() error {
 	}
 	delete(p.header, contentLengthHeader)
 	p.chunked = true
-
+	
 	return nil
 }
 
@@ -715,14 +715,14 @@ func (p *Parser) parseTrailer() error {
 		return nil
 	}
 	header := p.header
-
+	
 	trailers, ok := header[trailerHeader]
 	if !ok {
 		return nil
 	}
-
+	
 	header.Del(trailerHeader)
-
+	
 	trailer := http.Header{}
 	for _, key := range trailers {
 		key = textproto.TrimString(key)
@@ -762,7 +762,7 @@ func (p *Parser) handleMessage() {
 	p.chunked = false
 	p.header = nil
 	p.trailer = nil
-
+	
 	if !p.isClient {
 		p.nextState(stateMethodBefore)
 	} else {

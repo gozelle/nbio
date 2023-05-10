@@ -11,30 +11,30 @@ import (
 	"net"
 	"runtime"
 	"time"
-
-	"github.com/lesismal/nbio/logging"
+	
+	"github.com/gozelle/nbio/logging"
 )
 
 const (
 	// EPOLLLT .
 	EPOLLLT = 0
-
+	
 	// EPOLLET .
 	EPOLLET = 1
 )
 
 type poller struct {
 	g *Engine
-
+	
 	index int
-
+	
 	ReadBuffer []byte
-
+	
 	pollType   string
 	isListener bool
 	listener   net.Listener
 	shutdown   bool
-
+	
 	chStop chan struct{}
 }
 
@@ -43,11 +43,11 @@ func (p *poller) accept() error {
 	if err != nil {
 		return err
 	}
-
+	
 	c := newConn(conn)
 	o := p.g.pollers[c.Hash()%len(p.g.pollers)]
 	o.addConn(c)
-
+	
 	return nil
 }
 
@@ -76,7 +76,7 @@ func (p *poller) addConn(c *Conn, virtualUDPConn ...interface{}) error {
 	if c.typ != ConnTypeUDPClientFromRead {
 		go p.readConn(c)
 	}
-
+	
 	return nil
 }
 
@@ -96,10 +96,10 @@ func (p *poller) start() {
 		defer runtime.UnlockOSThread()
 	}
 	defer p.g.Done()
-
+	
 	logging.Debug("NBIO[%v][%v_%v] start", p.g.Name, p.pollType, p.index)
 	defer logging.Debug("NBIO[%v][%v_%v] stopped", p.g.Name, p.pollType, p.index)
-
+	
 	if p.isListener {
 		var err error
 		p.shutdown = false
@@ -116,7 +116,7 @@ func (p *poller) start() {
 					break
 				}
 			}
-
+			
 		}
 	}
 	<-p.chStop
@@ -138,7 +138,7 @@ func newPoller(g *Engine, isListener bool, index int) (*poller, error) {
 		isListener: isListener,
 		chStop:     make(chan struct{}),
 	}
-
+	
 	if isListener {
 		var err error
 		var addr = g.addrs[index%len(g.addrs)]
@@ -150,6 +150,6 @@ func newPoller(g *Engine, isListener bool, index int) (*poller, error) {
 	} else {
 		p.pollType = "POLLER"
 	}
-
+	
 	return p, nil
 }

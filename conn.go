@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"time"
 	"unsafe"
-
-	"github.com/lesismal/nbio/logging"
+	
+	"github.com/gozelle/nbio/logging"
 )
 
 // ConnType .
@@ -106,11 +106,11 @@ func (c *Conn) Execute(f func()) bool {
 		c.mux.Unlock()
 		return false
 	}
-
+	
 	isHead := (len(c.execList) == 0)
 	c.execList = append(c.execList, f)
 	c.mux.Unlock()
-
+	
 	if isHead {
 		c.p.g.Execute(func() {
 			i := 0
@@ -126,7 +126,7 @@ func (c *Conn) Execute(f func()) bool {
 					}()
 					f()
 				}()
-
+				
 				c.mux.Lock()
 				i++
 				if len(c.execList) == i {
@@ -139,7 +139,7 @@ func (c *Conn) Execute(f func()) bool {
 			}
 		})
 	}
-
+	
 	return true
 }
 
@@ -149,13 +149,13 @@ func (c *Conn) MustExecute(f func()) {
 	isHead := (len(c.execList) == 0)
 	c.execList = append(c.execList, f)
 	c.mux.Unlock()
-
+	
 	if isHead {
 		c.p.g.Execute(func() {
 			i := 0
 			for {
 				f()
-
+				
 				c.mux.Lock()
 				i++
 				if len(c.execList) == i {

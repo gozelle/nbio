@@ -1,9 +1,9 @@
 package tls
 
 import (
+	"github.com/gozelle/nbio"
+	"github.com/gozelle/nbio/mempool"
 	"github.com/lesismal/llib/std/crypto/tls"
-	"github.com/lesismal/nbio"
-	"github.com/lesismal/nbio/mempool"
 )
 
 // Conn .
@@ -18,7 +18,7 @@ func Dial(network, addr string, config *Config) (*tls.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	
 	return tlsConn, nil
 }
 

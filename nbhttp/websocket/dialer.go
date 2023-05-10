@@ -8,10 +8,10 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
+	
+	"github.com/gozelle/nbio"
+	"github.com/gozelle/nbio/nbhttp"
 	"github.com/lesismal/llib/std/crypto/tls"
-	"github.com/lesismal/nbio"
-	"github.com/lesismal/nbio/nbhttp"
 )
 
 const (
@@ -27,23 +27,23 @@ const (
 // Dialer .
 type Dialer struct {
 	Engine *nbhttp.Engine
-
+	
 	Upgrader *Upgrader
-
+	
 	Jar http.CookieJar
-
+	
 	DialTimeout time.Duration
-
+	
 	TLSClientConfig *tls.Config
-
+	
 	Proxy func(*http.Request) (*url.URL, error)
-
+	
 	CheckRedirect func(req *http.Request, via []*http.Request) error
-
+	
 	Subprotocols []string
-
+	
 	EnableCompression bool
-
+	
 	Cancel context.CancelFunc
 }
 
@@ -61,22 +61,22 @@ func (d *Dialer) DialContext(ctx context.Context, urlStr string, requestHeader h
 	if d.Cancel != nil {
 		defer d.Cancel()
 	}
-
+	
 	upgrader := d.Upgrader
 	if upgrader == nil {
 		return nil, nil, errors.New("invalid Upgrader: nil")
 	}
-
+	
 	challengeKey, err := challengeKey()
 	if err != nil {
 		return nil, nil, err
 	}
-
+	
 	u, err := url.Parse(urlStr)
 	if err != nil {
 		return nil, nil, err
 	}
-
+	
 	switch u.Scheme {
 	case "ws":
 		u.Scheme = "http"
@@ -85,11 +85,11 @@ func (d *Dialer) DialContext(ctx context.Context, urlStr string, requestHeader h
 	default:
 		return nil, nil, ErrMalformedURL
 	}
-
+	
 	if u.User != nil {
 		return nil, nil, ErrMalformedURL
 	}
-
+	
 	req := &http.Request{
 		Method:     "GET",
 		URL:        u,
@@ -99,13 +99,13 @@ func (d *Dialer) DialContext(ctx context.Context, urlStr string, requestHeader h
 		Header:     make(http.Header),
 		Host:       u.Host,
 	}
-
+	
 	if d.Jar != nil {
 		for _, cookie := range d.Jar.Cookies(u) {
 			req.AddCookie(cookie)
 		}
 	}
-
+	
 	req.Header[upgradeHeaderField] = []string{"websocket"}
 	req.Header[connectionHeaderField] = []string{"Upgrade"}
 	req.Header[secWebsocketKeyHeaderField] = []string{challengeKey}
@@ -132,25 +132,25 @@ func (d *Dialer) DialContext(ctx context.Context, urlStr string, requestHeader h
 			req.Header[k] = vs
 		}
 	}
-
+	
 	if d.EnableCompression {
 		req.Header[secWebsocketExtHeaderField] = []string{"permessage-deflate; server_no_context_takeover; client_no_context_takeover"}
 	}
-
+	
 	var asyncHandler func(*Conn, *http.Response, error)
 	if len(v) > 0 {
 		if h, ok := v[0].(func(*Conn, *http.Response, error)); ok {
 			asyncHandler = h
 		}
 	}
-
+	
 	var wsConn *Conn
 	var res *http.Response
 	var errCh chan error
 	if asyncHandler == nil {
 		errCh = make(chan error, 1)
 	}
-
+	
 	cliConn := &nbhttp.ClientConn{
 		Engine:          d.Engine,
 		Jar:             d.Jar,
@@ -161,7 +161,7 @@ func (d *Dialer) DialContext(ctx context.Context, urlStr string, requestHeader h
 	}
 	cliConn.Do(req, func(resp *http.Response, conn net.Conn, err error) {
 		res = resp
-
+		
 		notifyResult := func(e error) {
 			if asyncHandler == nil {
 				select {
@@ -177,12 +177,12 @@ func (d *Dialer) DialContext(ctx context.Context, urlStr string, requestHeader h
 				})
 			}
 		}
-
+		
 		if err != nil {
 			notifyResult(err)
 			return
 		}
-
+		
 		nbc, ok := conn.(*nbio.Conn)
 		if !ok {
 			tlsConn, tlsOk := conn.(*tls.Conn)
@@ -198,22 +198,22 @@ func (d *Dialer) DialContext(ctx context.Context, urlStr string, requestHeader h
 				return
 			}
 		}
-
+		
 		parser, ok := nbc.Session().(*nbhttp.Parser)
 		if !ok {
 			err = errors.New(http.StatusText(http.StatusInternalServerError))
 			notifyResult(err)
 			return
 		}
-
+		
 		parser.Reader = upgrader
-
+		
 		if d.Jar != nil {
 			if rc := resp.Cookies(); len(rc) > 0 {
 				d.Jar.SetCookies(req.URL, rc)
 			}
 		}
-
+		
 		remoteCompressionEnabled := false
 		if resp.StatusCode != 101 ||
 			!headerContains(resp.Header, "Upgrade", "websocket") ||
@@ -223,7 +223,7 @@ func (d *Dialer) DialContext(ctx context.Context, urlStr string, requestHeader h
 			notifyResult(err)
 			return
 		}
-
+		
 		for _, ext := range parseExtensions(resp.Header) {
 			if ext[""] != "permessage-deflate" {
 				continue
@@ -235,26 +235,26 @@ func (d *Dialer) DialContext(ctx context.Context, urlStr string, requestHeader h
 				notifyResult(err)
 				return
 			}
-
+			
 			remoteCompressionEnabled = true
 			break
 		}
-
+		
 		wsConn = NewConn(upgrader, conn, resp.Header.Get(secWebsocketProtoHeaderField), remoteCompressionEnabled, false)
 		wsConn.isClient = true
 		wsConn.Engine = d.Engine
 		wsConn.OnClose(upgrader.onClose)
-
+		
 		upgrader.conn = wsConn
 		upgrader.Engine = parser.Engine
-
+		
 		if upgrader.openHandler != nil {
 			upgrader.openHandler(wsConn)
 		}
-
+		
 		notifyResult(err)
 	})
-
+	
 	if asyncHandler == nil {
 		select {
 		case err = <-errCh:
@@ -266,6 +266,6 @@ func (d *Dialer) DialContext(ctx context.Context, urlStr string, requestHeader h
 		}
 		return wsConn, res, err
 	}
-
+	
 	return nil, nil, nil
 }

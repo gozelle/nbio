@@ -17,14 +17,14 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
-
-	"github.com/lesismal/nbio/logging"
+	
+	"github.com/gozelle/nbio/logging"
 )
 
 const (
 	// EPOLLLT .
 	EPOLLLT = 0
-
+	
 	// EPOLLET .
 	EPOLLET = 0x80000000
 )
@@ -43,20 +43,20 @@ const (
 
 type poller struct {
 	g *Engine
-
+	
 	epfd  int
 	evtfd int
-
+	
 	index int
-
+	
 	shutdown bool
-
+	
 	listener     net.Listener
 	isListener   bool
 	unixSockAddr string
-
+	
 	ReadBuffer []byte
-
+	
 	pollType string
 }
 
@@ -88,14 +88,14 @@ func (p *poller) deleteConn(c *Conn) {
 		return
 	}
 	fd := c.fd
-
+	
 	if c.typ != ConnTypeUDPClientFromRead {
 		if c == p.g.connsUnix[fd] {
 			p.g.connsUnix[fd] = nil
 		}
 		p.deleteEvent(fd)
 	}
-
+	
 	if c.typ != ConnTypeUDPServer {
 		p.g.onClose(c, c.closeErr)
 	}
@@ -103,10 +103,10 @@ func (p *poller) deleteConn(c *Conn) {
 
 func (p *poller) start() {
 	defer p.g.Done()
-
+	
 	logging.Debug("NBIO[%v][%v_%v] start", p.g.Name, p.pollType, p.index)
 	defer logging.Debug("NBIO[%v][%v_%v] stopped", p.g.Name, p.pollType, p.index)
-
+	
 	if p.isListener {
 		p.acceptorLoop()
 	} else {
@@ -123,7 +123,7 @@ func (p *poller) acceptorLoop() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 	}
-
+	
 	p.shutdown = false
 	for !p.shutdown {
 		conn, err := p.listener.Accept()
@@ -155,28 +155,28 @@ func (p *poller) readWriteLoop() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 	}
-
+	
 	msec := -1
 	events := make([]syscall.EpollEvent, 1024)
-
+	
 	if p.g.onRead == nil && p.g.epollMod == EPOLLET {
 		p.g.maxConnReadTimesPerEventLoop = 1<<31 - 1
 	}
-
+	
 	p.shutdown = false
 	for !p.shutdown {
 		n, err := syscall.EpollWait(p.epfd, events, msec)
 		if err != nil && !errors.Is(err, syscall.EINTR) {
 			return
 		}
-
+		
 		if n <= 0 {
 			msec = -1
 			// runtime.Gosched()
 			continue
 		}
 		msec = 20
-
+		
 		for _, ev := range events[:n] {
 			fd := int(ev.Fd)
 			switch fd {
@@ -188,11 +188,11 @@ func (p *poller) readWriteLoop() {
 						c.closeWithError(io.EOF)
 						continue
 					}
-
+					
 					if ev.Events&epollEventsWrite != 0 {
 						c.flush()
 					}
-
+					
 					if ev.Events&epollEventsRead != 0 {
 						if p.g.onRead == nil {
 							for i := 0; i < p.g.maxConnReadTimesPerEventLoop; i++ {
@@ -273,13 +273,13 @@ func newPoller(g *Engine, isListener bool, index int) (*poller, error) {
 		if len(g.addrs) == 0 {
 			panic("invalid listener num")
 		}
-
+		
 		addr := g.addrs[index%len(g.addrs)]
 		ln, err := g.listen(g.network, addr)
 		if err != nil {
 			return nil, err
 		}
-
+		
 		p := &poller{
 			g:          g,
 			index:      index,
@@ -290,21 +290,21 @@ func newPoller(g *Engine, isListener bool, index int) (*poller, error) {
 		if g.network == "unix" {
 			p.unixSockAddr = addr
 		}
-
+		
 		return p, nil
 	}
-
+	
 	fd, err := syscall.EpollCreate1(0)
 	if err != nil {
 		return nil, err
 	}
-
+	
 	r0, _, e0 := syscall.Syscall(syscall.SYS_EVENTFD2, 0, syscall.O_NONBLOCK, 0)
 	if e0 != 0 {
 		syscall.Close(fd)
 		return nil, e0
 	}
-
+	
 	err = syscall.EpollCtl(fd, syscall.EPOLL_CTL_ADD, int(r0),
 		&syscall.EpollEvent{Fd: int32(r0),
 			Events: syscall.EPOLLIN,
@@ -315,7 +315,7 @@ func newPoller(g *Engine, isListener bool, index int) (*poller, error) {
 		syscall.Close(int(r0))
 		return nil, err
 	}
-
+	
 	p := &poller{
 		g:          g,
 		epfd:       fd,
@@ -324,6 +324,6 @@ func newPoller(g *Engine, isListener bool, index int) (*poller, error) {
 		isListener: isListener,
 		pollType:   "POLLER",
 	}
-
+	
 	return p, nil
 }

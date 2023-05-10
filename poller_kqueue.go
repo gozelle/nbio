@@ -15,14 +15,14 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/lesismal/nbio/logging"
+	
+	"github.com/gozelle/nbio/logging"
 )
 
 const (
 	// EPOLLLT .
 	EPOLLLT = 0
-
+	
 	// EPOLLET .
 	EPOLLET = 1
 )
@@ -36,24 +36,24 @@ const (
 
 type poller struct {
 	mux sync.Mutex
-
+	
 	g *Engine
-
+	
 	kfd   int
 	evtfd int
-
+	
 	index int
-
+	
 	shutdown bool
-
+	
 	listener     net.Listener
 	isListener   bool
 	unixSockAddr string
-
+	
 	ReadBuffer []byte
-
+	
 	pollType string
-
+	
 	eventList []syscall.Kevent_t
 }
 
@@ -80,14 +80,14 @@ func (p *poller) deleteConn(c *Conn) {
 		return
 	}
 	fd := c.fd
-
+	
 	if c.typ != ConnTypeUDPClientFromRead {
 		if c == p.g.connsUnix[fd] {
 			p.g.connsUnix[fd] = nil
 		}
 		p.deleteEvent(fd)
 	}
-
+	
 	if c.typ != ConnTypeUDPServer {
 		p.g.onClose(c, c.closeErr)
 	}
@@ -151,7 +151,7 @@ func (p *poller) readWrite(ev *syscall.Kevent_t) {
 				p.g.onRead(c)
 			}
 		}
-
+		
 		if ev.Filter&syscall.EVFILT_WRITE == syscall.EVFILT_WRITE {
 			c.flush()
 		}
@@ -167,10 +167,10 @@ func (p *poller) start() {
 		defer runtime.UnlockOSThread()
 	}
 	defer p.g.Done()
-
+	
 	logging.Debug("NBIO[%v][%v_%v] start", p.g.Name, p.pollType, p.index)
 	defer logging.Debug("NBIO[%v][%v_%v] stopped", p.g.Name, p.pollType, p.index)
-
+	
 	if p.isListener {
 		p.acceptorLoop()
 	} else {
@@ -184,7 +184,7 @@ func (p *poller) acceptorLoop() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 	}
-
+	
 	p.shutdown = false
 	for !p.shutdown {
 		conn, err := p.listener.Accept()
@@ -214,10 +214,10 @@ func (p *poller) readWriteLoop() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 	}
-
+	
 	var events = make([]syscall.Kevent_t, 1024)
 	var changes []syscall.Kevent_t
-
+	
 	p.shutdown = false
 	for !p.shutdown {
 		p.mux.Lock()
@@ -228,7 +228,7 @@ func (p *poller) readWriteLoop() {
 		if err != nil && err != syscall.EINTR {
 			return
 		}
-
+		
 		for i := 0; i < n; i++ {
 			switch int(events[i].Ident) {
 			case p.evtfd:
@@ -256,13 +256,13 @@ func newPoller(g *Engine, isListener bool, index int) (*poller, error) {
 		if len(g.addrs) == 0 {
 			panic("invalid listener num")
 		}
-
+		
 		addr := g.addrs[index%len(g.addrs)]
 		ln, err := g.listen(g.network, addr)
 		if err != nil {
 			return nil, err
 		}
-
+		
 		p := &poller{
 			g:          g,
 			index:      index,
@@ -273,26 +273,26 @@ func newPoller(g *Engine, isListener bool, index int) (*poller, error) {
 		if g.network == "unix" {
 			p.unixSockAddr = addr
 		}
-
+		
 		return p, nil
 	}
-
+	
 	fd, err := syscall.Kqueue()
 	if err != nil {
 		return nil, err
 	}
-
+	
 	_, err = syscall.Kevent(fd, []syscall.Kevent_t{{
 		Ident:  0,
 		Filter: syscall.EVFILT_USER,
 		Flags:  syscall.EV_ADD | syscall.EV_CLEAR,
 	}}, nil, nil)
-
+	
 	if err != nil {
 		syscall.Close(fd)
 		return nil, err
 	}
-
+	
 	p := &poller{
 		g:          g,
 		kfd:        fd,
@@ -300,6 +300,6 @@ func newPoller(g *Engine, isListener bool, index int) (*poller, error) {
 		isListener: isListener,
 		pollType:   "POLLER",
 	}
-
+	
 	return p, nil
 }

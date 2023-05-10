@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 	"unsafe"
-
+	
+	"github.com/gozelle/nbio"
+	"github.com/gozelle/nbio/logging"
+	"github.com/gozelle/nbio/mempool"
 	"github.com/lesismal/llib/std/crypto/tls"
-	"github.com/lesismal/nbio"
-	"github.com/lesismal/nbio/logging"
-	"github.com/lesismal/nbio/mempool"
 )
 
 type resHandler struct {
@@ -28,23 +28,23 @@ type ClientConn struct {
 	mux      sync.Mutex
 	conn     net.Conn
 	handlers []resHandler
-
+	
 	closed bool
-
+	
 	onClose func()
-
+	
 	Engine *Engine
-
+	
 	Jar http.CookieJar
-
+	
 	Timeout time.Duration
-
+	
 	IdleConnTimeout time.Duration
-
+	
 	TLSClientConfig *tls.Config
-
+	
 	Proxy func(*http.Request) (*url.URL, error)
-
+	
 	CheckRedirect func(req *http.Request, via []*http.Request) error
 }
 
@@ -64,7 +64,7 @@ func (c *ClientConn) OnClose(h func()) {
 	if h == nil {
 		return
 	}
-
+	
 	pre := c.onClose
 	c.onClose = func() {
 		if pre != nil {
@@ -109,11 +109,11 @@ func (c *ClientConn) closeWithErrorWithoutLock(err error) {
 func (c *ClientConn) onResponse(res *http.Response, err error) {
 	c.mux.Lock()
 	defer c.mux.Unlock()
-
+	
 	if !c.closed && len(c.handlers) > 0 {
 		head := c.handlers[0]
 		head.h(res, c.conn, err)
-
+		
 		c.handlers = c.handlers[1:]
 		if len(c.handlers) > 0 {
 			next := c.handlers[0]
@@ -151,22 +151,22 @@ func (c *ClientConn) Do(req *http.Request, handler func(res *http.Response, conn
 			logging.Error("ClientConn Do failed: %v\n%v\n", err, *(*string)(unsafe.Pointer(&buf)))
 		}
 	}()
-
+	
 	if c.closed {
 		handler(nil, nil, ErrClientClosed)
 		return
 	}
-
+	
 	var engine = c.Engine
 	var confTimeout = c.Timeout
-
+	
 	c.handlers = append(c.handlers, resHandler{c: c.conn, t: time.Now(), h: handler})
-
+	
 	var deadline time.Time
 	if confTimeout > 0 {
 		deadline = time.Now().Add(confTimeout)
 	}
-
+	
 	sendRequest := func() {
 		if c.Engine.WriteTimeout > 0 {
 			c.conn.SetWriteDeadline(time.Now().Add(c.Engine.WriteTimeout))
@@ -177,7 +177,7 @@ func (c *ClientConn) Do(req *http.Request, handler func(res *http.Response, conn
 			return
 		}
 	}
-
+	
 	if c.conn != nil {
 		if confTimeout > 0 && len(c.handlers) == 1 {
 			c.conn.SetReadDeadline(deadline)
@@ -192,7 +192,7 @@ func (c *ClientConn) Do(req *http.Request, handler func(res *http.Response, conn
 				return
 			}
 		}
-
+		
 		strs := strings.Split(req.URL.Host, ":")
 		host := strs[0]
 		port := req.URL.Scheme
@@ -200,7 +200,7 @@ func (c *ClientConn) Do(req *http.Request, handler func(res *http.Response, conn
 			port = strs[1]
 		}
 		addr := host + ":" + port
-
+		
 		var netDial netDialerFunc
 		if confTimeout <= 0 {
 			netDial = func(network, addr string) (net.Conn, error) {
@@ -215,7 +215,7 @@ func (c *ClientConn) Do(req *http.Request, handler func(res *http.Response, conn
 				return conn, err
 			}
 		}
-
+		
 		if c.Proxy != nil {
 			proxyURL, err := c.Proxy(req)
 			if err != nil {
@@ -231,13 +231,13 @@ func (c *ClientConn) Do(req *http.Request, handler func(res *http.Response, conn
 				netDial = dialer.Dial
 			}
 		}
-
+		
 		netConn, err := netDial(defaultNetwork, addr)
 		if err != nil {
 			c.closeWithErrorWithoutLock(err)
 			return
 		}
-
+		
 		switch req.URL.Scheme {
 		case "http":
 			var nbc *nbio.Conn
@@ -246,7 +246,7 @@ func (c *ClientConn) Do(req *http.Request, handler func(res *http.Response, conn
 				c.closeWithErrorWithoutLock(err)
 				return
 			}
-
+			
 			c.conn = nbc
 			processor := NewClientProcessor(c, c.onResponse)
 			parser := NewParser(processor, true, engine.ReadLimit, nbc.Execute)
@@ -256,7 +256,7 @@ func (c *ClientConn) Do(req *http.Request, handler func(res *http.Response, conn
 				c.CloseWithError(err)
 			})
 			nbc.SetSession(parser)
-
+			
 			nbc.OnData(engine.DataHandler)
 			engine.AddConn(nbc)
 		case "https":
@@ -281,16 +281,16 @@ func (c *ClientConn) Do(req *http.Request, handler func(res *http.Response, conn
 					return
 				}
 			}
-
+			
 			nbc, err := nbio.NBConn(tlsConn.Conn())
 			if err != nil {
 				c.closeWithErrorWithoutLock(err)
 				return
 			}
-
+			
 			isNonblock := true
 			tlsConn.ResetConn(nbc, isNonblock)
-
+			
 			c.conn = tlsConn
 			processor := NewClientProcessor(c, c.onResponse)
 			parser := NewParser(processor, true, engine.ReadLimit, nbc.Execute)
@@ -300,7 +300,7 @@ func (c *ClientConn) Do(req *http.Request, handler func(res *http.Response, conn
 				c.CloseWithError(err)
 			})
 			nbc.SetSession(parser)
-
+			
 			nbc.OnData(engine.TLSDataHandler)
 			_, err = engine.AddConn(nbc)
 			if err != nil {
@@ -311,7 +311,7 @@ func (c *ClientConn) Do(req *http.Request, handler func(res *http.Response, conn
 			c.closeWithErrorWithoutLock(ErrClientUnsupportedSchema)
 			return
 		}
-
+		
 		sendRequest()
 	}
 }

@@ -11,9 +11,9 @@ import (
 	"math/rand"
 	"net"
 	"sync"
-
-	"github.com/lesismal/nbio/mempool"
-	"github.com/lesismal/nbio/nbhttp"
+	
+	"github.com/gozelle/nbio/mempool"
+	"github.com/gozelle/nbio/nbhttp"
 )
 
 const (
@@ -46,21 +46,21 @@ const (
 // Conn .
 type Conn struct {
 	net.Conn
-
+	
 	mux sync.Mutex
-
+	
 	isClient                 bool
 	onCloseCalled            bool
 	remoteCompressionEnabled bool
 	enableWriteCompression   bool
 	compressionLevel         int
-
+	
 	subprotocol string
-
+	
 	chAsyncWrite chan []byte
-
+	
 	session interface{}
-
+	
 	onClose func(c *Conn, err error)
 	Engine  *nbhttp.Engine
 }
@@ -132,7 +132,7 @@ func (c *Conn) OnClose(h func(*Conn, error)) {
 func (c *Conn) WriteMessage(messageType MessageType, data []byte) error {
 	c.mux.Lock()
 	defer c.mux.Unlock()
-
+	
 	switch messageType {
 	case TextMessage:
 	case BinaryMessage:
@@ -143,7 +143,7 @@ func (c *Conn) WriteMessage(messageType MessageType, data []byte) error {
 	case FragmentMessage:
 	default:
 	}
-
+	
 	compress := c.enableWriteCompression && (messageType == TextMessage || messageType == BinaryMessage)
 	if compress {
 		compress = true
@@ -163,7 +163,7 @@ func (c *Conn) WriteMessage(messageType MessageType, data []byte) error {
 			data = w.Bytes()
 		}
 	}
-
+	
 	if len(data) > 0 {
 		sendOpcode := true
 		for len(data) > 0 {
@@ -180,7 +180,7 @@ func (c *Conn) WriteMessage(messageType MessageType, data []byte) error {
 		}
 		return nil
 	}
-
+	
 	return c.writeFrame(messageType, true, true, []byte{}, compress)
 }
 
@@ -217,12 +217,12 @@ func (c *Conn) writeFrame(messageType MessageType, sendOpcode, fin bool, data []
 		headLen int
 		bodyLen = len(data)
 	)
-
+	
 	if c.isClient {
 		byte1 |= maskBit
 		maskLen = 4
 	}
-
+	
 	if bodyLen < 126 {
 		headLen = 2 + maskLen
 		buf = mempool.Malloc(len(data) + headLen)
@@ -241,7 +241,7 @@ func (c *Conn) writeFrame(messageType MessageType, sendOpcode, fin bool, data []
 		buf[1] = (byte1 | 127)
 		binary.BigEndian.PutUint64(buf[2:10], uint64(bodyLen))
 	}
-
+	
 	if c.isClient {
 		u32 := rand.Uint32()
 		maskKey := []byte{byte(u32), byte(u32 >> 8), byte(u32 >> 16), byte(u32 >> 24)}
@@ -252,23 +252,23 @@ func (c *Conn) writeFrame(messageType MessageType, sendOpcode, fin bool, data []
 	} else {
 		copy(buf[headLen:], data)
 	}
-
+	
 	// opcode
 	if sendOpcode {
 		buf[0] = byte(messageType)
 	} else {
 		buf[0] = 0
 	}
-
+	
 	if compress {
 		buf[0] |= 0x40
 	}
-
+	
 	// fin
 	if fin {
 		buf[0] |= byte(0x80)
 	}
-
+	
 	if c.chAsyncWrite != nil {
 		select {
 		case c.chAsyncWrite <- buf:
@@ -278,10 +278,10 @@ func (c *Conn) writeFrame(messageType MessageType, sendOpcode, fin bool, data []
 		}
 		return nil
 	}
-
+	
 	_, err := c.Conn.Write(buf)
 	mempool.Free(buf)
-
+	
 	return err
 }
 
@@ -330,6 +330,6 @@ func NewConn(u *Upgrader, c net.Conn, subprotocol string, remoteCompressionEnabl
 		conn.chAsyncWrite = make(chan []byte, 4096)
 	}
 	u.conn = conn
-
+	
 	return conn
 }

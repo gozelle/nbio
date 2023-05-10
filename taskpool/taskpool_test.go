@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 	"unsafe"
-
-	"github.com/lesismal/nbio/logging"
+	
+	"github.com/gozelle/nbio/logging"
 )
 
 const testLoopNum = 1024
@@ -16,7 +16,7 @@ const sleepTime = time.Nanosecond * 0
 func BenchmarkGo(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
-
+	
 	for i := 0; i < b.N; i++ {
 		wg := sync.WaitGroup{}
 		wg.Add(testLoopNum)
@@ -43,10 +43,10 @@ func BenchmarkGo(b *testing.B) {
 func BenchmarkTaskPool(b *testing.B) {
 	p := New(32, 1024)
 	defer p.Stop()
-
+	
 	b.ReportAllocs()
 	b.ResetTimer()
-
+	
 	for i := 0; i < b.N; i++ {
 		wg := sync.WaitGroup{}
 		wg.Add(testLoopNum)

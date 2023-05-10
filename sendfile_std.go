@@ -10,8 +10,8 @@ package nbio
 import (
 	"io"
 	"os"
-
-	"github.com/lesismal/nbio/mempool"
+	
+	"github.com/gozelle/nbio/mempool"
 )
 
 // Sendfile .
@@ -19,7 +19,7 @@ func (c *Conn) Sendfile(f *os.File, remain int64) (written int64, err error) {
 	if f == nil {
 		return 0, nil
 	}
-
+	
 	if remain <= 0 {
 		stat, e := f.Stat()
 		if err != nil {
@@ -27,7 +27,7 @@ func (c *Conn) Sendfile(f *os.File, remain int64) (written int64, err error) {
 		}
 		remain = stat.Size()
 	}
-
+	
 	for remain > 0 {
 		bufLen := 1024 * 32
 		if bufLen > int(remain) {

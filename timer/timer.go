@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 	"unsafe"
-
-	"github.com/lesismal/nbio/logging"
+	
+	"github.com/gozelle/nbio/logging"
 )
 
 const (
@@ -21,24 +21,24 @@ const (
 
 type Timer struct {
 	name string
-
+	
 	wg  sync.WaitGroup
 	mux sync.Mutex
-
+	
 	executor func(f func())
-
+	
 	chCalling chan struct{}
 	callings  []func()
-
+	
 	trigger *time.Timer
 	items   timerHeap
-
+	
 	chClose chan struct{}
 }
 
 func New(name string, executor func(f func())) *Timer {
 	t := &Timer{}
-
+	
 	t.mux.Lock()
 	t.name = name
 	t.executor = executor
@@ -47,7 +47,7 @@ func New(name string, executor func(f func())) *Timer {
 	t.trigger = time.NewTimer(TimeForever)
 	t.chClose = make(chan struct{})
 	t.mux.Unlock()
-
+	
 	return t
 }
 
@@ -75,7 +75,7 @@ func (t *Timer) After(timeout time.Duration) <-chan time.Time {
 // AfterFunc used as time.AfterFunc.
 func (t *Timer) AfterFunc(timeout time.Duration, f func()) *Item {
 	t.mux.Lock()
-
+	
 	now := time.Now()
 	it := &Item{
 		index:  len(t.items),
@@ -83,14 +83,14 @@ func (t *Timer) AfterFunc(timeout time.Duration, f func()) *Item {
 		f:      f,
 		parent: t,
 	}
-
+	
 	heap.Push(&t.items, it)
 	if t.items[0] == it {
 		t.trigger.Reset(timeout)
 	}
-
+	
 	t.mux.Unlock()
-
+	
 	return it
 }
 
@@ -110,12 +110,12 @@ func (t *Timer) Async(f func()) {
 func (t *Timer) removeTimer(it *Item) {
 	t.mux.Lock()
 	defer t.mux.Unlock()
-
+	
 	index := it.index
 	if index < 0 || index >= len(t.items) {
 		return
 	}
-
+	
 	if t.items[index] == it {
 		heap.Remove(&t.items, index)
 		if len(t.items) > 0 {
@@ -131,12 +131,12 @@ func (t *Timer) removeTimer(it *Item) {
 func (t *Timer) resetTimer(it *Item, d time.Duration) {
 	t.mux.Lock()
 	defer t.mux.Unlock()
-
+	
 	index := it.index
 	if index < 0 || index >= len(t.items) {
 		return
 	}
-
+	
 	if t.items[index] == it {
 		it.expire = time.Now().Add(d)
 		heap.Fix(&t.items, index)

@@ -7,8 +7,8 @@ package nbhttp
 import (
 	"io"
 	"sync"
-
-	"github.com/lesismal/nbio/mempool"
+	
+	"github.com/gozelle/nbio/mempool"
 )
 
 var (

@@ -14,23 +14,23 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
-
+	
+	"github.com/gozelle/nbio"
+	"github.com/gozelle/nbio/logging"
+	"github.com/gozelle/nbio/mempool"
+	"github.com/gozelle/nbio/nbhttp"
 	"github.com/lesismal/llib/std/crypto/tls"
-	"github.com/lesismal/nbio"
-	"github.com/lesismal/nbio/logging"
-	"github.com/lesismal/nbio/mempool"
-	"github.com/lesismal/nbio/nbhttp"
 )
 
 var (
 	// DefaultBlockingReadBufferSize .
 	DefaultBlockingReadBufferSize = 1024 * 4
-
+	
 	// DefaultBlockingModAsyncWrite represents whether create a goroutine to handle writing:
 	// true : create a goroutine to recv buffers and write to conn, default is true;
 	// false: write buffer to the conn directely.
 	DefaultBlockingModAsyncWrite = false
-
+	
 	// DefaultEngine will be set to a Upgrader.Engine to handle details such as buffers.
 	DefaultEngine = nbhttp.NewEngine(nbhttp.Config{
 		ReleaseWebsocketPayload: true,
@@ -46,14 +46,14 @@ type WebsocketReader struct {
 	MessageLengthLimit int64
 	HandshakeTimeout   time.Duration
 	KeepaliveTime      time.Duration
-
+	
 	compressionLevel int
 	Subprotocols     []string
-
+	
 	CheckOrigin func(r *http.Request) bool
-
+	
 	Engine *nbhttp.Engine
-
+	
 	BlockingModReadBufferSize int
 	BlockingModAsyncWrite     bool
 	isBlockingMod             bool
@@ -64,13 +64,13 @@ type WebsocketReader struct {
 	opcode                    MessageType
 	buffer                    []byte
 	message                   []byte
-
+	
 	conn *Conn
-
+	
 	pingMessageHandler  func(c *Conn, appData string)
 	pongMessageHandler  func(c *Conn, appData string)
 	closeMessageHandler func(c *Conn, code int, text string)
-
+	
 	openHandler      func(*Conn)
 	messageHandler   func(c *Conn, messageType MessageType, data []byte)
 	dataFrameHandler func(c *Conn, messageType MessageType, fin bool, data []byte)
@@ -196,23 +196,23 @@ func (wr *WebsocketReader) Upgrade(w http.ResponseWriter, r *http.Request, respo
 	if !headerContains(r.Header, "Connection", "upgrade") {
 		return nil, wr.returnError(w, r, http.StatusBadRequest, ErrUpgradeTokenNotFound)
 	}
-
+	
 	if !headerContains(r.Header, "Upgrade", "websocket") {
 		return nil, wr.returnError(w, r, http.StatusBadRequest, ErrUpgradeTokenNotFound)
 	}
-
+	
 	if r.Method != "GET" {
 		return nil, wr.returnError(w, r, http.StatusMethodNotAllowed, ErrUpgradeMethodIsGet)
 	}
-
+	
 	if !headerContains(r.Header, "Sec-Websocket-Version", "13") {
 		return nil, wr.returnError(w, r, http.StatusBadRequest, ErrUpgradeInvalidWebsocketVersion)
 	}
-
+	
 	if _, ok := responseHeader["Sec-Websocket-Extensions"]; ok {
 		return nil, wr.returnError(w, r, http.StatusInternalServerError, ErrUpgradeUnsupportedExtensions)
 	}
-
+	
 	checkOrigin := wr.CheckOrigin
 	if checkOrigin == nil {
 		checkOrigin = checkSameOrigin
@@ -220,14 +220,14 @@ func (wr *WebsocketReader) Upgrade(w http.ResponseWriter, r *http.Request, respo
 	if !checkOrigin(r) {
 		return nil, wr.returnError(w, r, http.StatusForbidden, ErrUpgradeOriginNotAllowed)
 	}
-
+	
 	challengeKey := r.Header.Get("Sec-Websocket-Key")
 	if challengeKey == "" {
 		return nil, wr.returnError(w, r, http.StatusBadRequest, ErrUpgradeMissingWebsocketKey)
 	}
-
+	
 	subprotocol := wr.selectSubprotocol(r, responseHeader)
-
+	
 	// Negotiate PMCE
 	var compress bool
 	if wr.enableCompression {
@@ -239,7 +239,7 @@ func (wr *WebsocketReader) Upgrade(w http.ResponseWriter, r *http.Request, respo
 			break
 		}
 	}
-
+	
 	h, ok := w.(http.Hijacker)
 	if !ok {
 		return nil, wr.returnError(w, r, http.StatusInternalServerError, ErrUpgradeNotHijacker)
@@ -248,7 +248,7 @@ func (wr *WebsocketReader) Upgrade(w http.ResponseWriter, r *http.Request, respo
 	if err != nil {
 		return nil, wr.returnError(w, r, http.StatusInternalServerError, err)
 	}
-
+	
 	var parser *nbhttp.Parser
 	switch vt := conn.(type) {
 	case *nbio.Conn:
@@ -289,7 +289,7 @@ func (wr *WebsocketReader) Upgrade(w http.ResponseWriter, r *http.Request, respo
 		wr.conn = NewConn(wr, conn, subprotocol, compress, wr.BlockingModAsyncWrite)
 		wr.isBlockingMod = true
 	}
-
+	
 	buf := mempool.Malloc(1024)[0:0]
 	buf = mempool.AppendString(buf, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ")
 	buf = mempool.Append(buf, acceptKeyBytes(challengeKey)...)
@@ -321,30 +321,30 @@ func (wr *WebsocketReader) Upgrade(w http.ResponseWriter, r *http.Request, respo
 		}
 	}
 	buf = mempool.AppendString(buf, "\r\n")
-
+	
 	if wr.HandshakeTimeout > 0 {
 		conn.SetWriteDeadline(time.Now().Add(wr.HandshakeTimeout))
 	}
-
+	
 	_, err = conn.Write(buf)
 	mempool.Free(buf)
 	if err != nil {
 		conn.Close()
 		return nil, err
 	}
-
+	
 	if wr.KeepaliveTime <= 0 {
 		conn.SetReadDeadline(time.Now().Add(nbhttp.DefaultKeepaliveTime))
 	} else {
 		conn.SetReadDeadline(time.Now().Add(wr.KeepaliveTime))
 	}
-
+	
 	if wr.openHandler != nil {
 		wr.openHandler(wr.conn)
 	}
-
+	
 	wr.conn.OnClose(wr.onClose)
-
+	
 	if wr.isBlockingMod {
 		if wr.BlockingModAsyncWrite {
 			go wr.BlockingModWriteLoop()
@@ -353,7 +353,7 @@ func (wr *WebsocketReader) Upgrade(w http.ResponseWriter, r *http.Request, respo
 			go wr.BlockingModReadLoop()
 		}
 	}
-
+	
 	return wr.conn, nil
 }
 
@@ -376,16 +376,16 @@ func (wr *WebsocketReader) BlockingModReadLoop() {
 		conn    = wr.conn
 		bufSize = wr.BlockingModReadBufferSize
 	)
-
+	
 	if bufSize <= 0 {
 		bufSize = DefaultBlockingReadBufferSize
 	}
 	buf = make([]byte, bufSize)
-
+	
 	defer func() {
 		wr.Close(nil, err)
 	}()
-
+	
 	for {
 		n, err = conn.Read(buf)
 		if err != nil {
@@ -402,7 +402,7 @@ func (wr *WebsocketReader) BlockingModReadLoop() {
 func (wr *WebsocketReader) BlockingModWriteLoop() {
 	conn := wr.conn
 	defer conn.Close()
-
+	
 	for data := range conn.chAsyncWrite {
 		_, err := conn.Conn.Write(data)
 		mempool.Free(data)
@@ -446,7 +446,7 @@ func (wr *WebsocketReader) Read(p *nbhttp.Parser, data []byte) error {
 	if wr.ReadLimit > 0 && (int64(oldLen+len(data)) > wr.ReadLimit || int64(oldLen+len(wr.message)) > wr.ReadLimit) {
 		return nbhttp.ErrTooLong
 	}
-
+	
 	var oldBuffer []byte
 	if oldLen == 0 {
 		wr.buffer = data
@@ -454,7 +454,7 @@ func (wr *WebsocketReader) Read(p *nbhttp.Parser, data []byte) error {
 		wr.buffer = mempool.Append(wr.buffer, data...)
 		oldBuffer = wr.buffer
 	}
-
+	
 	var err error
 	for i := 0; true; i++ {
 		opcode, body, ok, fin, res1, res2, res3 := wr.nextFrame()
@@ -536,12 +536,12 @@ func (wr *WebsocketReader) Read(p *nbhttp.Parser, data []byte) error {
 			}
 			wr.handleProtocolMessage(p, opcode, frame)
 		}
-
+		
 		if len(wr.buffer) == 0 {
 			break
 		}
 	}
-
+	
 	if oldLen == 0 {
 		if len(wr.buffer) > 0 {
 			tmp := wr.buffer
@@ -561,7 +561,7 @@ func (wr *WebsocketReader) Read(p *nbhttp.Parser, data []byte) error {
 			mempool.Free(oldBuffer)
 		}
 	}
-
+	
 	return err
 }
 
@@ -681,7 +681,7 @@ func (wr *WebsocketReader) nextFrame() (opcode MessageType, body []byte, ok, fin
 		fin = ((wr.buffer[0] & 0x80) != 0)
 		payloadLen := wr.buffer[1] & 0x7F
 		bodyLen := int64(-1)
-
+		
 		switch payloadLen {
 		case 126:
 			if l >= 4 {
@@ -710,13 +710,13 @@ func (wr *WebsocketReader) nextFrame() (opcode MessageType, body []byte, ok, fin
 						body[i] ^= maskKey[i%4]
 					}
 				}
-
+				
 				ok = true
 				wr.buffer = wr.buffer[total:l]
 			}
 		}
 	}
-
+	
 	return opcode, body, ok, fin, res1, res2, res3
 }
 

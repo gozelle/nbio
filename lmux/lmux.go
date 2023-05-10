@@ -5,8 +5,8 @@ import (
 	"net"
 	"sync/atomic"
 	"time"
-
-	"github.com/lesismal/nbio/logging"
+	
+	"github.com/gozelle/nbio/logging"
 )
 
 type event struct {

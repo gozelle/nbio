@@ -14,28 +14,28 @@ import (
 	"strconv"
 	"time"
 	"unsafe"
-
-	"github.com/lesismal/nbio/logging"
-	"github.com/lesismal/nbio/mempool"
+	
+	"github.com/gozelle/nbio/logging"
+	"github.com/gozelle/nbio/mempool"
 )
 
 // Response represents the server side of an HTTP response.
 type Response struct {
 	Parser *Parser
-
+	
 	request *http.Request // request for this response
-
+	
 	status     string
 	statusCode int // status code passed to WriteHeader
-
+	
 	header      http.Header
 	trailer     map[string]string
 	trailerSize int
-
+	
 	buffer       []byte
 	bodyBuffer   []byte
 	intFormatBuf [10]byte
-
+	
 	chunked        bool
 	chunkChecked   bool
 	headEncoded    bool
@@ -66,7 +66,7 @@ func (res *Response) WriteHeader(statusCode int) {
 			res.status = status
 			res.statusCode = statusCode
 		}
-
+		
 		if cl := res.header.Get(contentLengthHeader); cl != "" {
 			v, err := strconv.ParseInt(cl, 10, 64)
 			if err == nil && v >= 0 {
@@ -75,7 +75,7 @@ func (res *Response) WriteHeader(statusCode int) {
 				res.header.Del(contentLengthHeader)
 			}
 		}
-
+		
 		res.checkChunked()
 	}
 }
@@ -97,14 +97,14 @@ func (res *Response) Write(data []byte) (int, error) {
 	if l == 0 || conn == nil {
 		return 0, nil
 	}
-
+	
 	res.WriteHeader(http.StatusOK)
-
+	
 	res.hasBody = true
-
+	
 	if res.chunked {
 		res.eoncodeHead()
-
+		
 		buf := res.buffer
 		hl := len(buf)
 		res.buffer = nil
@@ -142,10 +142,10 @@ func (res *Response) Write(data []byte) (int, error) {
 		}
 		return -1, err
 	}
-
+	
 	if len(res.header[contentLengthHeader]) > 0 {
 		res.eoncodeHead()
-
+		
 		buf := res.buffer
 		res.buffer = nil
 		if buf == nil {
@@ -159,7 +159,7 @@ func (res *Response) Write(data []byte) (int, error) {
 	if res.bodyBuffer == nil {
 		res.bodyBuffer = mempool.Malloc(l)[0:0]
 	}
-
+	
 	res.bodyBuffer = mempool.Append(res.bodyBuffer, data...)
 	// res.header[contentLengthHeader] = []string{res.formatInt(l, 10)}
 	return l, nil
@@ -171,7 +171,7 @@ func (res *Response) ReadFrom(r io.Reader) (n int64, err error) {
 	if c == nil {
 		return 0, nil
 	}
-
+	
 	res.hasBody = true
 	res.eoncodeHead()
 	_, err = c.Write(res.buffer)
@@ -179,7 +179,7 @@ func (res *Response) ReadFrom(r io.Reader) (n int64, err error) {
 	if err != nil {
 		return 0, err
 	}
-
+	
 	if res.enableSendfile {
 		lr, ok := r.(*io.LimitedReader)
 		if ok {
@@ -188,7 +188,7 @@ func (res *Response) ReadFrom(r io.Reader) (n int64, err error) {
 				return 0, nil
 			}
 		}
-
+		
 		f, ok := r.(*os.File)
 		if ok {
 			nc, ok := c.(interface {
@@ -200,7 +200,7 @@ func (res *Response) ReadFrom(r io.Reader) (n int64, err error) {
 			}
 		}
 	}
-
+	
 	return io.Copy(c, r)
 }
 
@@ -209,11 +209,11 @@ func (res *Response) checkChunked() {
 	if res.chunkChecked {
 		return
 	}
-
+	
 	res.chunkChecked = true
-
+	
 	// res.WriteHeader(http.StatusOK)
-
+	
 	if res.request.ProtoAtLeast(1, 1) {
 		for _, v := range res.header[transferEncodingHeader] {
 			if v == "chunked" {
@@ -238,26 +238,26 @@ func (res *Response) eoncodeHead() {
 	if res.headEncoded {
 		return
 	}
-
+	
 	res.WriteHeader(http.StatusOK)
-
+	
 	res.headEncoded = true
-
+	
 	status := res.status
 	statusCode := res.statusCode
-
+	
 	data := mempool.Malloc(1024)[0:0]
-
+	
 	data = mempool.AppendString(data, res.request.Proto)
 	data = mempool.Append(data, ' ', '0'+byte(statusCode/100), '0'+byte(statusCode%100)/10, '0'+byte(statusCode%10), ' ')
 	data = mempool.AppendString(data, status)
 	data = mempool.Append(data, '\r', '\n')
-
+	
 	if res.hasBody && len(res.header["Content-Type"]) == 0 {
 		const contentType = "Content-Type: text/plain; charset=utf-8\r\n"
 		data = mempool.AppendString(data, contentType)
 	}
-
+	
 	const contentLenthKey = "Content-Length"
 	if !res.chunked && len(res.header[contentLenthKey]) == 0 {
 		const contentLenthPrefix = "Content-Length: "
@@ -280,7 +280,7 @@ func (res *Response) eoncodeHead() {
 		const connection = "Connection: close\r\n"
 		data = mempool.AppendString(data, connection)
 	}
-
+	
 	if len(res.header["Date"]) == 0 {
 		const days = "SunMonTueWedThuFriSat"
 		const months = "JanFebMarAprMayJunJulAugSepOctNovDec"
@@ -301,7 +301,7 @@ func (res *Response) eoncodeHead() {
 			'G', 'M', 'T',
 			'\r', '\n')
 	}
-
+	
 	res.trailer = map[string]string{}
 	trailers := res.header[trailerHeader]
 	for _, k := range trailers {
@@ -321,14 +321,14 @@ func (res *Response) eoncodeHead() {
 			res.trailerSize += (len(k) + len(v) + 4)
 		}
 	}
-
+	
 	data = mempool.Append(data, '\r', '\n')
 	res.buffer = data
 }
 
 func (res *Response) flushTrailer(conn io.Writer) error {
 	var err error
-
+	
 	if !res.chunked {
 		if res.buffer != nil {
 			if res.bodyBuffer != nil {
@@ -348,10 +348,10 @@ func (res *Response) flushTrailer(conn io.Writer) error {
 			mempool.Free(res.bodyBuffer)
 			res.bodyBuffer = nil
 		}
-
+		
 		return err
 	}
-
+	
 	data := res.buffer
 	res.buffer = nil
 	if len(res.trailer) == 0 {
@@ -383,7 +383,7 @@ func (res *Response) formatInt(n int, base int) string {
 	if n < 0 || n > 0x7FFFFFFF {
 		return ""
 	}
-
+	
 	buf := res.intFormatBuf[:]
 	i := len(buf)
 	for {

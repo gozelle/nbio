@@ -15,42 +15,42 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/lesismal/nbio/mempool"
-	"github.com/lesismal/nbio/timer"
+	
+	"github.com/gozelle/nbio/mempool"
+	"github.com/gozelle/nbio/timer"
 )
 
 // Conn implements net.Conn.
 type Conn struct {
 	mux sync.Mutex
-
+	
 	p *poller
-
+	
 	fd int
-
+	
 	connUDP *udpConn
-
+	
 	rTimer *timer.Item
 	wTimer *timer.Item
-
+	
 	writeBuffer []byte
-
+	
 	typ      ConnType
 	closed   bool
 	isWAdded bool
 	closeErr error
-
+	
 	lAddr net.Addr
 	rAddr net.Addr
-
+	
 	ReadBuffer []byte
-
+	
 	session interface{}
-
+	
 	chWaitWrite chan struct{}
-
+	
 	execList []func()
-
+	
 	DataHandler func(c *Conn, data []byte)
 }
 
@@ -67,13 +67,13 @@ func (c *Conn) Read(b []byte) (int, error) {
 		c.mux.Unlock()
 		return 0, net.ErrClosed
 	}
-
+	
 	_, n, err := c.doRead(b)
 	c.mux.Unlock()
 	if err == nil {
 		c.p.g.afterRead(c)
 	}
-
+	
 	return n, err
 }
 
@@ -90,13 +90,13 @@ func (c *Conn) ReadAndGetConn(b []byte) (*Conn, int, error) {
 		c.mux.Unlock()
 		return c, 0, net.ErrClosed
 	}
-
+	
 	dstConn, n, err := c.doRead(b)
 	c.mux.Unlock()
 	if err == nil {
 		c.p.g.afterRead(c)
 	}
-
+	
 	return dstConn, n, err
 }
 
@@ -125,7 +125,7 @@ func (c *Conn) readUDP(b []byte) (*Conn, int, error) {
 	if err != nil {
 		return c, 0, err
 	}
-
+	
 	var g = c.p.g
 	var dstConn = c
 	if c.typ == ConnTypeUDPServer {
@@ -138,20 +138,20 @@ func (c *Conn) readUDP(b []byte) (*Conn, int, error) {
 		}
 		dstConn = uc
 	}
-
+	
 	return dstConn, nread, err
 }
 
 // Write implements Write.
 func (c *Conn) Write(b []byte) (int, error) {
 	c.p.g.beforeWrite(c)
-
+	
 	c.mux.Lock()
 	if c.closed {
 		c.mux.Unlock()
 		return -1, net.ErrClosed
 	}
-
+	
 	n, err := c.write(b)
 	if err != nil && !errors.Is(err, syscall.EINTR) && !errors.Is(err, syscall.EAGAIN) {
 		c.closed = true
@@ -159,7 +159,7 @@ func (c *Conn) Write(b []byte) (int, error) {
 		c.closeWithErrorWithoutLock(err)
 		return n, err
 	}
-
+	
 	if len(c.writeBuffer) == 0 {
 		if c.wTimer != nil {
 			c.wTimer.Stop()
@@ -168,7 +168,7 @@ func (c *Conn) Write(b []byte) (int, error) {
 	} else {
 		c.modWrite()
 	}
-
+	
 	c.mux.Unlock()
 	return n, err
 }
@@ -176,14 +176,14 @@ func (c *Conn) Write(b []byte) (int, error) {
 // Writev implements Writev.
 func (c *Conn) Writev(in [][]byte) (int, error) {
 	c.p.g.beforeWrite(c)
-
+	
 	c.mux.Lock()
 	if c.closed {
 		c.mux.Unlock()
-
+		
 		return 0, net.ErrClosed
 	}
-
+	
 	var n int
 	var err error
 	switch len(in) {
@@ -206,7 +206,7 @@ func (c *Conn) Writev(in [][]byte) (int, error) {
 	} else {
 		c.modWrite()
 	}
-
+	
 	c.mux.Unlock()
 	return n, err
 }
@@ -386,11 +386,11 @@ func (c *Conn) write(b []byte) (int, error) {
 	if len(b) == 0 {
 		return 0, nil
 	}
-
+	
 	if c.overflow(len(b)) {
 		return -1, syscall.EINVAL
 	}
-
+	
 	if len(c.writeBuffer) == 0 {
 		n, err := c.doWrite(b)
 		if err != nil && !errors.Is(err, syscall.EINTR) && !errors.Is(err, syscall.EAGAIN) {
@@ -408,7 +408,7 @@ func (c *Conn) write(b []byte) (int, error) {
 		return len(b), nil
 	}
 	c.writeBuffer = mempool.Append(c.writeBuffer, b...)
-
+	
 	return len(b), nil
 }
 
@@ -418,14 +418,14 @@ func (c *Conn) flush() error {
 		c.mux.Unlock()
 		return net.ErrClosed
 	}
-
+	
 	if len(c.writeBuffer) == 0 {
 		c.mux.Unlock()
 		return nil
 	}
-
+	
 	old := c.writeBuffer
-
+	
 	n, err := c.doWrite(old)
 	if err != nil && !errors.Is(err, syscall.EINTR) && !errors.Is(err, syscall.EAGAIN) {
 		c.closed = true
@@ -459,7 +459,7 @@ func (c *Conn) flush() error {
 			}
 		}
 	}
-
+	
 	c.mux.Unlock()
 	return nil
 }
@@ -478,7 +478,7 @@ func (c *Conn) writev(in [][]byte) (int, error) {
 		}
 		return size, nil
 	}
-
+	
 	if len(in) > 1 && size <= 65536 {
 		b := mempool.Malloc(size)
 		copied := 0
@@ -490,7 +490,7 @@ func (c *Conn) writev(in [][]byte) (int, error) {
 		mempool.Free(b)
 		return n, err
 	}
-
+	
 	nwrite := 0
 	for _, b := range in {
 		n, err := c.write(b)
@@ -529,7 +529,7 @@ func (c *Conn) closeWithError(err error) error {
 	c.mux.Lock()
 	if !c.closed {
 		c.closed = true
-
+		
 		if c.wTimer != nil {
 			c.wTimer.Stop()
 			c.wTimer = nil
@@ -538,7 +538,7 @@ func (c *Conn) closeWithError(err error) error {
 			c.rTimer.Stop()
 			c.rTimer = nil
 		}
-
+		
 		c.mux.Unlock()
 		return c.closeWithErrorWithoutLock(err)
 	}
@@ -548,23 +548,23 @@ func (c *Conn) closeWithError(err error) error {
 
 func (c *Conn) closeWithErrorWithoutLock(err error) error {
 	c.closeErr = err
-
+	
 	if c.writeBuffer != nil {
 		mempool.Free(c.writeBuffer)
 		c.writeBuffer = nil
 	}
-
+	
 	if c.chWaitWrite != nil {
 		select {
 		case c.chWaitWrite <- struct{}{}:
 		default:
 		}
 	}
-
+	
 	if c.p.g != nil {
 		c.p.deleteConn(c)
 	}
-
+	
 	switch c.typ {
 	case ConnTypeTCP, ConnTypeUnix:
 		err = syscall.Close(c.fd)
@@ -572,7 +572,7 @@ func (c *Conn) closeWithErrorWithoutLock(err error) error {
 		err = c.connUDP.Close()
 	default:
 	}
-
+	
 	return err
 }
 
@@ -594,10 +594,10 @@ func NBConn(conn net.Conn) (*Conn, error) {
 
 type udpConn struct {
 	parent *Conn
-
+	
 	rAddr    syscall.Sockaddr
 	rAddrStr string
-
+	
 	mux   sync.RWMutex
 	conns map[string]*Conn
 }
@@ -623,7 +623,7 @@ func (u *udpConn) getConn(p *poller, fd int, rsa syscall.Sockaddr) (*Conn, bool)
 	u.mux.RLock()
 	c, ok := u.conns[rAddrStr]
 	u.mux.RUnlock()
-
+	
 	if !ok {
 		c = &Conn{
 			p:     p,
@@ -641,7 +641,7 @@ func (u *udpConn) getConn(p *poller, fd int, rsa syscall.Sockaddr) (*Conn, bool)
 		u.conns[rAddrStr] = c
 		u.mux.Unlock()
 	}
-
+	
 	return c, ok
 }
 
@@ -652,7 +652,7 @@ func getUDPNetAddrString(sa syscall.Sockaddr) string {
 	var ip []byte
 	var port int
 	var zone string
-
+	
 	switch vt := sa.(type) {
 	case *syscall.SockaddrInet4:
 		ip = vt.Addr[:]
@@ -666,7 +666,7 @@ func getUDPNetAddrString(sa syscall.Sockaddr) string {
 			return string(ip) + i.Name + strconv.Itoa(port)
 		}
 	}
-
+	
 	return string(ip) + zone + strconv.Itoa(port)
 }
 
